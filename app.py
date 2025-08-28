@@ -23,8 +23,14 @@ CORS(app)
 # --------------------
 # This section now reads the data from your uploaded CSV file.
 try:
-    df = pd.read_csv(r"C:\Users\dhare\Downloads\ngos_dummy_large.csv")
+    df = pd.read_csv("ngos_dummy_large.csv")
     print("Successfully loaded data from ngos_dummy_large.csv")
+except FileNotFoundError:
+    print("Error: The file 'ngos_dummy_large.csv' was not found.")
+    print("Please make sure the CSV file is in the same directory as this script.")
+    df = pd.DataFrame() # Create an empty DataFrame to prevent further errors
+except Exception as e:
+    print(f"An error occurred while loading the data: {e}")
     df = pd.DataFrame()
 
 # --------------------
@@ -151,6 +157,3 @@ if __name__ == '__main__':
     # Use a dynamic port for hosting services like Heroku or Render
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
-
-
