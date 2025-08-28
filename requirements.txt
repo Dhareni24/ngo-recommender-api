@@ -1,6 +1,6 @@
-
 Flask
 pandas
 scikit-learn
 matplotlib
 gunicorn
+Flask-CORS
