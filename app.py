@@ -11,23 +11,19 @@ import base64
 import json
 import os
 from flask import Flask, request, jsonify
-from flask import Flask
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)  # This line is the fix!
-
-# Your other code goes here
+from flask_cors import CORS # Import CORS to handle cross-origin requests
 
 # Create the Flask application
 app = Flask(__name__)
+# Enable CORS for the application
+CORS(app)
 
 # --------------------
 # Load Data & Model
 # --------------------
 # This section now reads the data from your uploaded CSV file.
 try:
-    df = pd.read_csv("ngos_dummy_large.csv")
+    df = pd.read_csv(r"C:\Users\dhare\Downloads\ngos_dummy_large.csv")
     print("Successfully loaded data from ngos_dummy_large.csv")
 except FileNotFoundError:
     print("Error: The file 'ngos_dummy_large.csv' was not found.")
@@ -41,6 +37,10 @@ except Exception as e:
 # Machine Learning Logic
 # --------------------
 def clean_text(text):
+    """
+    Cleans a string by converting to lowercase and removing special characters.
+    Handles non-string inputs gracefully.
+    """
     if not isinstance(text, str):
         text = ""
     text = text.lower()
@@ -50,9 +50,11 @@ def clean_text(text):
 # Only run model training if the DataFrame is not empty
 if not df.empty:
     df["clean_desc"] = df["description"].apply(clean_text)
-    df["sdg_label"] = df["sdg"].str.split(";", n=1).str[0].str.strip()
+    # Safely handle NaN values in the 'sdg' column before splitting
+    df["sdg_label"] = df["sdg"].astype(str).str.split(";", n=1).str[0].str.strip()
 
     # ML classifier to predict SDG
+    # The pipeline will clean the text and then apply TF-IDF and Naive Bayes
     pipeline = Pipeline([
         ("clean", FunctionTransformer(lambda x: [clean_text(str(t)) for t in x])),
         ("tfidf", TfidfVectorizer(ngram_range=(1,2))),
@@ -65,11 +67,18 @@ if not df.empty:
     ngo_matrix = vectorizer.fit_transform(df["clean_desc"])
 
 def predict_sdg(query):
+    """
+    Predicts the SDG for a given query using the trained ML pipeline.
+    """
     if df.empty:
         return "N/A"
     return pipeline.predict([query])[0]
 
 def recommend_ngos(user_query, location=None, top_k=5):
+    """
+    Recommends NGOs based on a user query and optional location.
+    Calculates cosine similarity between the query and NGO descriptions.
+    """
     if df.empty:
         return pd.DataFrame()
     query_clean = clean_text(user_query)
@@ -79,11 +88,15 @@ def recommend_ngos(user_query, location=None, top_k=5):
     
     results = df.copy()
     if location:
+        # Filter by location, safely handling case and missing values
         results = results[results["location_city"].str.lower().fillna('') == location.lower()]
     
     return results.sort_values("score", ascending=False).head(top_k)
 
 def plot_results_to_base64(results):
+    """
+    Generates a bar plot of the recommendations and returns it as a base64 string.
+    """
     if results.empty:
         return ""
     
@@ -94,12 +107,14 @@ def plot_results_to_base64(results):
     plt.title("Top NGO Recommendations")
     plt.gca().invert_yaxis()
     
+    # Save the plot to a temporary in-memory buffer
     buf = BytesIO()
     plt.savefig(buf, format='png')
     buf.seek(0)
     
+    # Encode the buffer content to a base64 string
     base64_string = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.close()
+    plt.close() # Close the plot to free memory
     return base64_string
 
 # --------------------
@@ -107,6 +122,9 @@ def plot_results_to_base64(results):
 # --------------------
 @app.route('/recommend', methods=['POST'])
 def get_recommendations():
+    """
+    API endpoint that receives user input and returns NGO recommendations.
+    """
     try:
         data = request.get_json()
         user_query = data.get("query", "")
@@ -120,6 +138,7 @@ def get_recommendations():
         recommendations = recommend_ngos(user_query, location=user_location, top_k=5)
         plot_base64 = plot_results_to_base64(recommendations)
         
+        # Prepare the response data
         response_data = {
             "predicted_sdg": predicted_sdg,
             "recommendations": recommendations.to_dict('records'),
@@ -128,14 +147,13 @@ def get_recommendations():
         return jsonify(response_data), 200
 
     except Exception as e:
+        # Return a 500 status code with an error message if something goes wrong
         return jsonify({"error": str(e)}), 500
 
 # --------------------
-# Main entry point for Heroku
+# Main entry point for Heroku/Render
 # --------------------
 if __name__ == '__main__':
-    # Use a dynamic port for Heroku
+    # Use a dynamic port for hosting services like Heroku or Render
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-    
-
